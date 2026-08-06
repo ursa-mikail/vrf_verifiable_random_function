@@ -226,6 +226,62 @@ mined). If `alpha` were instead something the prover could freely choose or
 change after seeing intermediate results, they could grind through options
 looking for a favorable "random" outcome, which breaks the whole point of
 using a VRF over a plain RNG.
+
+Here's a concrete walkthrough of the attack, using a lottery-style example.
+
+## The setup
+
+Say a VRF is used to pick a winning ticket number for a raffle:
+```
+random_number = VRF_output(secret_key, alpha)
+winner = random_number mod 100        # a number from 0-99
+```
+The prover runs the VRF and publishes `(alpha, proof, random_number)`. Everyone else calls `verify()` to confirm it's legitimate.
+
+## The cheat: if the prover gets to choose `alpha`
+
+Suppose the rule is just *"the organizer picks any `alpha` string they like."* The organizer also happens to hold ticket #7 and wants to win.
+
+The prover in this raffle is the organizer running the VRF, and they also happen to hold ticket #7. So they have both:
+
+- The secret key — meaning only they can generate valid proofs, and
+- Free choice of alpha — meaning they get to pick the input before anyone else sees it.
+
+* The prover cheating means the prover is also a stakeholder in the outcome, , and the vulnerability is that they controlled the one input (`alpha`) they shouldn't have been able to control, giving them unlimited private retries before committing to a public answer.
+
+Since `prove()` and `verify()` are both things the organizer can run locally, before publishing anything, they just... try a bunch of inputs:
+
+```
+for candidate in ["raffle-2026", "raffle-2026-v2", "draw-1", "draw-2", "attempt-A", "attempt-B", ...]:
+    proof = prove(secret_key, public_key, candidate)
+    random_number = proof_to_hash(proof)
+    if random_number % 100 == 7:
+        winning_alpha = candidate
+        break
+```
+
+Every one of these is a **completely legitimate, verifiable VRF proof** — nothing about it is fake. `verify()` will happily confirm each one. The organizer just quietly throws away every trial that doesn't land on ticket #7, and only publishes the one that does:
+
+```
+publish(alpha = "attempt-B", proof, random_number)   # random_number % 100 == 7 ✓
+```
+
+Anyone checking `verify(public_key, "attempt-B", proof)` sees `True` and a correctly-derived random number. It looks completely fair. But the organizer tried maybe 20-30 candidates behind the scenes before publishing the one that favored them — on average it only takes about 100 tries to hit any specific target with 1/100 odds, and this is cheap and instant to do offline.
+
+**This is exactly what determinism and verifiability *don't* protect against.** They guarantee *"you can't change your mind after publishing"* — but they say nothing about how many private drafts you tried before deciding what to publish.
+
+## Why "the prover doesn't control `alpha`" fixes this
+
+Now change the rule: `alpha = hash of yesterday's stock market closing prices`, or `alpha = the hash of the previous blockchain block`. The organizer can't grind through options anymore, because:
+
+- That data doesn't exist yet until the relevant moment happens (a block gets mined, a market closes).
+- Once it exists, it's fixed and public — the organizer can't quietly try 30 different market closes and pick their favorite; there's only one.
+- By the time the organizer *can* compute the VRF, `alpha` is already locked in, so there's only one possible `(random_number, proof)` pair they're capable of producing — no room to fish for a better outcome.
+
+That's the entire reason real systems tie `alpha` to something like a block hash, a finalized round number, or a chained previous VRF output, instead of letting the prover pick a free-text string.
+
+
+
  
 ### 3. Prove (needs the secret key)
 ```
