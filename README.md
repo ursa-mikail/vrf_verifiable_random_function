@@ -126,6 +126,13 @@ Why not just use alpha itself as x? A few reasons:
 - `alpha` can be any length (a string, a block hash, whatever) — x needs to be exactly 32 bytes and < curve prime p. Hashing normalizes that. alpha has to be known to the verifier. It is not a secret and need not be randomly generated. It just needs to be unpredictable to the prover in advance, and fixed before the prover acts — those are different properties from "random."
 
 If it were secret, nobody could check the proof. It's meant to be public and agreed-upon by everyone involved.
+
+What actually matters is who controls it and when it's fixed. If the prover could pick `alpha` themselves, or see the output for a few candidate alphas and then choose their favorite, the whole scheme is broken — they could grind for a favorable "random" result. So the real requirement is: alpha is fixed by the protocol/context, before the prover produces a proof, and the prover has no say in it.
+
+The unpredictability in the system comes from the secret key, not from `alpha`. Even with alpha being a plain sequential counter like 1, 2, 3, ..., the outputs Hash(secret_key * H) still look pseudorandom to anyone without secret_key, because H itself (via hash-to-curve) and the scalar multiplication scramble things thoroughly.
+
+So the design goal for `alpha` isn't "make it random" — it's "make it something the prover can't cherry-pick or predict-and-manipulate before committing to a proof." A block hash works precisely because it's already finalized and public by the time the prover uses it, not because it's random per se.
+
 - You need retries. Since only ~half of all possible x values have a matching y, you need a way to try a different x if the first one fails — that's what ctr is for. If you used alpha directly as x with no counter, you'd have no way to "try again" when it happens to land on an invalid x — you'd just be stuck.
 - Binding to the public key. Mixing public_key into the hash means the same alpha produces a different x (and thus a different H) for every different key — which is what stops one party's proof from being replayed under someone else's key.
 
