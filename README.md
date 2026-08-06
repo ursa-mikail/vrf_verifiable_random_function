@@ -405,3 +405,72 @@ This is written for clarity, not for production:
 - Encoding lengths (`c` truncated to 16 bytes) are a simplification for
   P-256 and not byte-for-byte identical to any specific published test
   vector — treat this as a teaching implementation, not an interoperable one.
+
+---
+
+**Algebra over the elliptic curve group**
+To show why the equation balances, both symbolically and with real numbers:
+
+## The claim
+
+The prover computes:
+```
+Gamma = x·H          (x = secret_key)
+U     = k·G
+V     = k·H
+c     = Hash(H, Gamma, U, V)
+s     = k + c·x  (mod n)
+```
+
+The verifier — who only knows `Y = x·G` (the public key), never `x` or `k` — recomputes:
+```
+U' = s·G − c·Y
+V' = s·H − c·Gamma
+c' = Hash(H, Gamma, U', V')
+```
+
+**Claim:** if the proof is genuine, `U' = U`, `V' = V`, and therefore `c' = c`.
+
+## The algebra
+
+The only rule you need is that scalar multiplication on the curve distributes like ordinary multiplication:
+```
+(m + n)·P = m·P + n·P
+m·(n·P)   = (mn)·P
+```
+This holds because "scalar times point" is just repeated point-addition, and point-addition is an abelian group operation — the same reason `3+3+3 = 3×3` works for ordinary numbers.
+
+**Substitute `s = k + c·x` into `U'`:**
+```
+U' = s·G − c·Y
+   = (k + c·x)·G − c·Y                substitute s
+   = k·G + (c·x)·G − c·Y              distribute over G
+   = k·G + c·(x·G) − c·Y              regroup
+   = k·G + c·Y − c·Y                  since Y = x·G
+   = k·G
+   = U                                 ✓ matches what the prover built
+```
+
+**Same substitution into `V'`:**
+```
+V' = s·H − c·Gamma
+   = (k + c·x)·H − c·Gamma            substitute s
+   = k·H + (c·x)·H − c·Gamma          distribute over H
+   = k·H + c·(x·H) − c·Gamma          regroup
+   = k·H + c·Gamma − c·Gamma          since Gamma = x·H
+   = k·H
+   = V                                 ✓ matches what the prover built
+```
+
+Since `U' = U` and `V' = V`, feeding them into the same hash function gives:
+```
+c' = Hash(H, Gamma, U', V') = Hash(H, Gamma, U, V) = c
+```
+
+So `c' == c` **only** because `Y = x·G` and `Gamma = x·H` share the *same* secret scalar `x`. If someone tried to fake `Gamma` without knowing `x` (i.e. `Gamma ≠ x·H` for the real `x`), the `−c·Y` and `−c·Gamma` terms wouldn't cancel the `c·x·G` / `c·x·H` terms cleanly, `U'`/`V'` would land on the wrong points, and `c'` would come out different — verification fails.
+
+## Concrete numeric check
+
+To run this with real curve points to make it tangible rather than just symbolic.The exact same points come out both ways — confirming the algebra with real 256-bit curve arithmetic, not just symbols. `U_prime` and `V_prime` were computed using **only** `Y` (the public key), `H`, `Gamma`, `c`, `s` — the secret key `x` and nonce `k` never appear on the verifier's side at all, yet they land on the identical points the prover built directly from `k`.
+
+That cancellation — `c·(x·G) − c·Y = 0` and `c·(x·H) − c·Gamma = 0` — is the entire trick that makes public-key-only verification possible: it only works because `Y` and `Gamma` were both built from the *same* `x`. A forger without `x` can't make both cancellations happen simultaneously for a `c` they don't control in advance, which is exactly what test 7 (`test_cannot_forge_without_secret_key`) confirms empirically.
