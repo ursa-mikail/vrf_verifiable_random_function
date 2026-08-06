@@ -123,7 +123,9 @@ candidate_x = SHA256(suite || 0x01 || public_key || alpha || ctr)   # alpha goes
 ```
 Why not just use alpha itself as x? A few reasons:
 
-- `alpha` can be any length (a string, a block hash, whatever) — x needs to be exactly 32 bytes and < curve prime p. Hashing normalizes that. alpha has to be known to the verifier. It is not a secret and need not be randomly generated. If it were secret, nobody could check the proof. It's meant to be public and agreed-upon by everyone involved.
+- `alpha` can be any length (a string, a block hash, whatever) — x needs to be exactly 32 bytes and < curve prime p. Hashing normalizes that. alpha has to be known to the verifier. It is not a secret and need not be randomly generated. It just needs to be unpredictable to the prover in advance, and fixed before the prover acts — those are different properties from "random."
+
+If it were secret, nobody could check the proof. It's meant to be public and agreed-upon by everyone involved.
 - You need retries. Since only ~half of all possible x values have a matching y, you need a way to try a different x if the first one fails — that's what ctr is for. If you used alpha directly as x with no counter, you'd have no way to "try again" when it happens to land on an invalid x — you'd just be stuck.
 - Binding to the public key. Mixing public_key into the hash means the same alpha produces a different x (and thus a different H) for every different key — which is what stops one party's proof from being replayed under someone else's key.
 
